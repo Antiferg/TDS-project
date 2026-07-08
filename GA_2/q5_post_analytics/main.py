@@ -7,7 +7,7 @@ from collections import defaultdict
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURATION — Replace with your actual email
 # ═══════════════════════════════════════════════════════════════
-YOUR_EMAIL = "your.email@university.edu"   # ← your login email
+YOUR_EMAIL = "23f3002957@ds.study.iitm.ac.in"   # ← your login email
 API_KEY    = "ak_pk6jsbd2xnh3uedlauw9w0gc" # ← your assigned key
 # ═══════════════════════════════════════════════════════════════
 
