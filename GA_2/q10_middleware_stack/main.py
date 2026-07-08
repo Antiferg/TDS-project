@@ -6,16 +6,16 @@ from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse, Response
 
 # ═══════════════════════════════════════════════════════════════
-# CONFIGURATION — Replace these with your actual values
+# CONFIGURATION
 # ═══════════════════════════════════════════════════════════════
-ALLOWED_ORIGIN = "https://app-fnij8g.example.com"  # ← your assigned origin
-YOUR_EMAIL = "23f3002957@ds.study.iitm.ac.in"             # ← your login email
-EXAM_PAGE_ORIGIN = "https://exam.sanand.workers.dev"      # ← paste exam page URL here
-B = 12                                               # ← your bucket size
-WINDOW = 10                                          # seconds
+ALLOWED_ORIGIN = "https://app-fnij8g.example.com"      # ← your assigned origin
+YOUR_EMAIL = "23f3002957@ds.study.iitm.ac.in"                # ← your login email
+EXAM_PAGE_ORIGIN = "https://exam.sanand.workers.dev"    # ← exam page
+B = 12                                                  # ← bucket size
+WINDOW = 10
 # ═══════════════════════════════════════════════════════════════
 
-ALLOWED_ORIGINS = {ALLOWED_ORIGIN, EXAM_PAGE_ORIGIN} if EXAM_PAGE_ORIGIN else {ALLOWED_ORIGIN}
+ALLOWED_ORIGINS = {ALLOWED_ORIGIN, EXAM_PAGE_ORIGIN}
 
 app = FastAPI()
 
@@ -44,57 +44,62 @@ class RateLimiter:
 rate_limiter = RateLimiter(limit=B, window=WINDOW)
 
 # ═══════════════════════════════════════════════════════════════
-# SINGLE MIDDLEWARE — handles CORS + Rate Limit + Request Context
+# SINGLE MIDDLEWARE
 # ═══════════════════════════════════════════════════════════════
 @app.middleware("http")
 async def combined_middleware(request: Request, call_next):
-    origin = request.headers.get("origin")
+    origin = request.headers.get("origin", "")
     method = request.method
 
-    # ── CORS Preflight (OPTIONS) ───────────────────────────
-    if method == "OPTIONS":
-        if origin in ALLOWED_ORIGINS:
-            return Response(
-                status_code=200,
-                headers={
-                    "Access-Control-Allow-Origin": origin,
-                    "Access-Control-Allow-Methods": "GET, OPTIONS",
-                    "Access-Control-Allow-Headers": "X-Request-ID, X-Client-Id, Content-Type",
-                    "Access-Control-Max-Age": "600",
-                }
-            )
-        # Reject preflight from other origins (no ACAO header)
-        return Response(status_code=200)
-
-    # ── Request Context ──────────────────────────────────────
+    # 1. Request ID (always generate or reuse)
     request_id = request.headers.get("X-Request-ID")
     if not request_id:
         request_id = str(uuid.uuid4())
     request.state.request_id = request_id
 
-    # ── Rate Limiting ────────────────────────────────────────
+    # Helper to build CORS headers
+    def cors_hdrs():
+        if origin in ALLOWED_ORIGINS:
+            return {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "X-Request-ID, X-Client-Id, Content-Type",
+                "Access-Control-Max-Age": "600",
+            }
+        return {}
+
+    # 2. CORS Preflight
+    if method == "OPTIONS":
+        return Response(status_code=200, headers=cors_hdrs())
+
+    # 3. Rate limiting
     client_id = request.headers.get("X-Client-Id", "anonymous")
     allowed, retry_after = rate_limiter.check(client_id)
+
+    # 4. Build base response headers (CORS + X-Request-ID)
+    base_headers = cors_hdrs()
+    base_headers["X-Request-ID"] = request_id
+
     if not allowed:
-        headers = {"Retry-After": str(retry_after)}
-        if origin in ALLOWED_ORIGINS:
-            headers["Access-Control-Allow-Origin"] = origin
+        base_headers["Retry-After"] = str(retry_after)
         return JSONResponse(
             status_code=429,
             content={"detail": "Rate limit exceeded"},
-            headers=headers,
+            headers=base_headers,
         )
 
-    # ── Call handler ───────────────────────────────────────
+    # 5. Call handler
     response = await call_next(request)
 
-    # ── Add response headers ─────────────────────────────────
-    response.headers["X-Request-ID"] = request_id
-    if origin in ALLOWED_ORIGINS:
-        response.headers["Access-Control-Allow-Origin"] = origin
+    # 6. Add headers to response
+    for k, v in base_headers.items():
+        response.headers[k] = v
 
     return response
 
 @app.get("/ping")
 async def ping(request: Request):
-    return {"email": YOUR_EMAIL, "request_id": request.state.request_id}
+    return {
+        "email": YOUR_EMAIL,
+        "request_id": request.state.request_id,
+    }
