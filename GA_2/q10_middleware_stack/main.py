@@ -64,6 +64,7 @@ async def combined_middleware(request: Request, call_next):
                 "Access-Control-Allow-Origin": origin,
                 "Access-Control-Allow-Methods": "GET, OPTIONS",
                 "Access-Control-Allow-Headers": "X-Request-ID, X-Client-Id, Content-Type",
+                "Access-Control-Expose-Headers": "X-Request-ID, Retry-After",
                 "Access-Control-Max-Age": "600",
             }
         return {}
