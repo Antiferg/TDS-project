@@ -4,31 +4,28 @@ import base64
 import math
 from typing import Optional, Dict, Tuple
 from fastapi import FastAPI, Request, Query, Header, HTTPException
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 
+# ═══════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════
 T = 45
 R = 17
 WINDOW = 10
+# ═══════════════════════════════════════════════════════════════
 
 app = FastAPI()
 
-# CORS middleware FIRST
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-
+# ── Fixed catalog: orders 1..45 ──────────────────────────────
 orders = [
     {"id": i, "item": f"Order-{i}", "amount": round(10.0 + i * 1.5, 2)}
     for i in range(1, T + 1)
 ]
 
+# ── Idempotency store ────────────────────────────────────────
 idempotency_store: Dict[str, dict] = {}
 
+# ── Rate limiter ─────────────────────────────────────────────
 class RateLimiter:
     def __init__(self, limit: int, window: int):
         self.limit = limit
@@ -52,38 +49,54 @@ class RateLimiter:
 
 rate_limiter = RateLimiter(limit=R, window=WINDOW)
 
+# ═══════════════════════════════════════════════════════════════
+# SINGLE MIDDLEWARE: CORS + Rate Limit (no CORSMiddleware!)
+# ═══════════════════════════════════════════════════════════════
 @app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    if request.method == "OPTIONS":
-        return await call_next(request)
-    
-    client_id = request.headers.get("X-Client-Id", "anonymous")
-    allowed, retry_after = rate_limiter.check(client_id)
-    
-    if not allowed:
-        # Build 429 response with CORS headers so browser doesn't block it
-        origin = request.headers.get("origin", "")
-        headers = {
-            "Retry-After": str(retry_after),
+async def cors_and_rate_limit(request: Request, call_next):
+    origin = request.headers.get("origin", "")
+    method = request.method
+
+    # CORS headers helper
+    def cors_headers():
+        return {
             "Access-Control-Allow-Origin": origin if origin else "*",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "X-Client-Id, Idempotency-Key, Content-Type",
+            "Access-Control-Allow-Headers": "X-Client-Id, Idempotency-Key, Content-Type, X-Request-ID",
+            "Access-Control-Max-Age": "600",
         }
+
+    # 1. Preflight OPTIONS
+    if method == "OPTIONS":
+        return Response(status_code=200, headers=cors_headers())
+
+    # 2. Rate limiting
+    client_id = request.headers.get("X-Client-Id", "anonymous")
+    allowed, retry_after = rate_limiter.check(client_id)
+
+    if not allowed:
+        # 429 with CORS + Retry-After (guaranteed)
+        headers = cors_headers()
+        headers["Retry-After"] = str(retry_after)
         return JSONResponse(
             status_code=429,
             content={"detail": "Rate limit exceeded"},
             headers=headers,
         )
 
-    return await call_next(request)
+    # 3. Call handler
+    response = await call_next(request)
 
+    # 4. Add CORS headers to response
+    for k, v in cors_headers().items():
+        response.headers[k] = v
+
+    return response
+
+# ── Endpoints ────────────────────────────────────────────────
 @app.get("/")
 async def root():
     return {"status": "ok"}
-
-@app.options("/orders")
-async def orders_preflight():
-    return JSONResponse(status_code=200, content={})
 
 @app.post("/orders")
 async def create_order(idempotency_key: Optional[str] = Header(None)):
