@@ -57,37 +57,41 @@ async def cors_and_rate_limit(request: Request, call_next):
     origin = request.headers.get("origin", "")
     method = request.method
 
-    # CORS headers helper
     def cors_headers():
         return {
             "Access-Control-Allow-Origin": origin if origin else "*",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
             "Access-Control-Allow-Headers": "X-Client-Id, Idempotency-Key, Content-Type, X-Request-ID",
+            # IMPORTANT: Allows browser JavaScript to read Retry-After
+            "Access-Control-Expose-Headers": "Retry-After",
             "Access-Control-Max-Age": "600",
         }
 
-    # 1. Preflight OPTIONS
+    # Handle CORS preflight
     if method == "OPTIONS":
         return Response(status_code=200, headers=cors_headers())
 
-    # 2. Rate limiting
-    client_id = request.headers.get("X-Client-Id", "anonymous")
-    allowed, retry_after = rate_limiter.check(client_id)
+    # Apply rate limiting ONLY if X-Client-Id is present
+    # (Assignment defines the bucket using this header.)
+    client_id = request.headers.get("X-Client-Id")
 
-    if not allowed:
-        # 429 with CORS + Retry-After (guaranteed)
-        headers = cors_headers()
-        headers["Retry-After"] = str(retry_after)
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Rate limit exceeded"},
-            headers=headers,
-        )
+    if client_id:
+        allowed, retry_after = rate_limiter.check(client_id)
 
-    # 3. Call handler
+        if not allowed:
+            headers = cors_headers()
+            headers["Retry-After"] = str(retry_after)
+
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded"},
+                headers=headers,
+            )
+
+    # Continue request
     response = await call_next(request)
 
-    # 4. Add CORS headers to response
+    # Add CORS headers to every response
     for k, v in cors_headers().items():
         response.headers[k] = v
 
