@@ -10,8 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 # CONFIGURATION — Replace these with your actual values
 # ═══════════════════════════════════════════════════════════════
 ALLOWED_ORIGIN = "https://app-fnij8g.example.com"  # ← your assigned origin
-YOUR_EMAIL = "your.email@university.edu"             # ← your login email
-EXAM_PAGE_ORIGIN = ""                                # ← paste exam page URL here (e.g. https://ga.example.com)
+YOUR_EMAIL = "23f3002957@ds.study.iitm.ac.in"             # ← your login email
+EXAM_PAGE_ORIGIN = "https://exam.sanand.workers.dev/tds-2026-05-ga2"  
 B = 12                                               # ← your assigned bucket size
 WINDOW = 10                                          # seconds
 # ═══════════════════════════════════════════════════════════════
