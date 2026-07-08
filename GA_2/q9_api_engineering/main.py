@@ -107,7 +107,7 @@ async def create_order(idempotency_key: Optional[str] = Header(None)):
     if not idempotency_key:
         raise HTTPException(status_code=400, detail="Idempotency-Key header required")
     if idempotency_key in idempotency_store:
-        return JSONResponse(status_code=200, content=idempotency_store[idempotency_key])
+        return JSONResponse(status_code=201, content=idempotency_store[idempotency_key])
     order_id = str(uuid.uuid4())
     order = {"id": order_id, "item": "Generic Item", "quantity": 1, "status": "created"}
     idempotency_store[idempotency_key] = order
