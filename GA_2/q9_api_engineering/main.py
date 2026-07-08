@@ -12,11 +12,14 @@ R = 17
 WINDOW = 10
 
 app = FastAPI()
+
+# CORS middleware FIRST
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 orders = [
@@ -53,14 +56,25 @@ rate_limiter = RateLimiter(limit=R, window=WINDOW)
 async def rate_limit_middleware(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
+    
     client_id = request.headers.get("X-Client-Id", "anonymous")
     allowed, retry_after = rate_limiter.check(client_id)
+    
     if not allowed:
+        # Build 429 response with CORS headers so browser doesn't block it
+        origin = request.headers.get("origin", "")
+        headers = {
+            "Retry-After": str(retry_after),
+            "Access-Control-Allow-Origin": origin if origin else "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "X-Client-Id, Idempotency-Key, Content-Type",
+        }
         return JSONResponse(
             status_code=429,
             content={"detail": "Rate limit exceeded"},
-            headers={"Retry-After": str(retry_after)},
+            headers=headers,
         )
+
     return await call_next(request)
 
 @app.get("/")
