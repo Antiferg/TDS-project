@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse, Response
 # ═══════════════════════════════════════════════════════════════
 ALLOWED_ORIGIN = "https://app-fnij8g.example.com"  # ← your assigned origin
 YOUR_EMAIL = "23f3002957@ds.study.iitm.ac.in"             # ← your login email
-EXAM_PAGE_ORIGIN = "https://exam.sanand.workers.dev/tds-2026-05-ga2"      # ← paste exam page URL here
+EXAM_PAGE_ORIGIN = "https://exam.sanand.workers.dev"      # ← paste exam page URL here
 B = 12                                               # ← your bucket size
 WINDOW = 10                                          # seconds
 # ═══════════════════════════════════════════════════════════════
